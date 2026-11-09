@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Moje MP3</title>
 <style>
-:root{--bg:#f6f5f1;--card:#fff;--ink:#1d1d1f;--mut:#6b6b70;--line:#e3e1da;--acc:#5b4bdb;color-scheme:light dark}
-@media (prefers-color-scheme:dark){:root{--bg:#131316;--card:#1c1c21;--ink:#f1f0ec;--mut:#9a9aa3;--line:#2c2c33;--acc:#9a8cff}}
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1d1d1f;--mut:#6b6b70;--line:#e3e1da;--acc:#5b4bdb;--accink:#fff;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#131316;--card:#1c1c21;--ink:#f1f0ec;--mut:#9a9aa3;--line:#2c2c33;--acc:#9a8cff;--accink:#14121f}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:760px;margin:0 auto;padding:28px 16px 48px}
@@ -17,19 +17,33 @@ h2{font-size:18px;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid va
 .slots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:560px){.slots{grid-template-columns:1fr}}
 .slot{border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.slot.win{border-color:var(--acc)}
 .lab{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:8px}
 audio{width:100%;height:40px}
 .miss{color:var(--mut);font-size:14px;margin:0}
+.vote{margin-top:10px;display:flex;align-items:center;gap:10px}
+.vote button{font:inherit;font-size:14px;border-radius:10px;border:1px solid var(--acc);background:transparent;color:var(--ink);padding:7px 12px;cursor:pointer}
+.vote button:hover:not(:disabled){background:var(--acc);color:var(--accink)}
+.vote button:disabled{cursor:default;opacity:.55;border-color:var(--line)}
+.vote button.mine{background:var(--acc);color:var(--accink);opacity:1;border-color:var(--acc)}
+.count{font-size:14px;color:var(--mut)}
+.bar{height:6px;border-radius:3px;background:var(--line);margin-top:12px;overflow:hidden;display:flex}
+.bar i{display:block;background:var(--acc);height:100%;width:0;transition:width .4s}
+.note{color:var(--mut);font-size:13px;margin-top:20px}
 </style>
 </head>
 <body>
 <main>
   <h1>Moje MP3</h1>
-  <p class="sub">5 skladieb, ku každej 2 verzie. Stačí kliknúť na play.</p>
+  <p class="sub">5 skladieb, ku každej 2 verzie. Pusti si obe a hlasuj, ktorá sa ti páči viac.</p>
   <div id="list"></div>
+  <p class="note" id="note"></p>
 </main>
 <script>
-// ===== NASTAVENIA: sem prepíš názvy skladieb a mená súborov =====
+// ===== NASTAVENIA =====
+// Adresa tvojej Firebase Realtime Database (bez lomky na konci). Návod je v README.md.
+var FIREBASE_URL = "";
+
 var TRACKS = [
   { title: "Skladba 1", v1: "1-v1.mp3", v2: "1-v2.mp3" },
   { title: "Skladba 2", v1: "2-v1.mp3", v2: "2-v2.mp3" },
@@ -38,22 +52,76 @@ var TRACKS = [
   { title: "Skladba 5", v1: "5-v1.mp3", v2: "5-v2.mp3" }
 ];
 var LABELS = ["Verzia 1", "Verzia 2"];
-// ================================================================
+// ======================
+
+var VOTING = !!FIREBASE_URL;
+var ui = {};      // ui[trackIndex] = {btns:[b1,b2], cnt:[c1,c2], bar:[i1,i2], slots:[s1,s2]}
+var counts = {};  // counts["t1"] = {v1:0, v2:0}
+
+function myVote(i) { try { return localStorage.getItem("vote_t" + (i + 1)); } catch (e) { return null; } }
+function saveVote(i, v) { try { localStorage.setItem("vote_t" + (i + 1), v); } catch (e) {} }
+
+function paint(i) {
+  var u = ui[i], c = counts["t" + (i + 1)] || { v1: 0, v2: 0 };
+  var a = c.v1 || 0, b = c.v2 || 0, sum = a + b, mine = myVote(i);
+  ["v1", "v2"].forEach(function (k, n) {
+    var val = n ? b : a;
+    u.cnt[n].textContent = val + (val === 1 ? " hlas" : (val >= 2 && val <= 4 ? " hlasy" : " hlasov"));
+    u.btns[n].disabled = !VOTING || !!mine;
+    u.btns[n].className = mine === k ? "mine" : "";
+    u.btns[n].textContent = mine === k ? "Tvoj hlas ✓" : "Hlasovať";
+    u.slots[n].className = "slot" + (sum && val > (n ? a : b) ? " win" : "");
+  });
+  u.bar[0].style.width = sum ? (a / sum * 100) + "%" : "0";
+  u.bar[1].style.width = sum ? (b / sum * 100) + "%" : "0";
+}
+
+async function load() {
+  if (!VOTING) return;
+  try {
+    var r = await fetch(FIREBASE_URL + "/votes.json");
+    var d = await r.json();
+    counts = d || {};
+    TRACKS.forEach(function (t, i) { paint(i); });
+  } catch (e) {
+    document.getElementById("note").textContent = "Hlasy sa nepodarilo načítať.";
+  }
+}
+
+async function vote(i, k) {
+  if (myVote(i)) return;
+  var key = "t" + (i + 1);
+  counts[key] = counts[key] || { v1: 0, v2: 0 };
+  counts[key][k] = (counts[key][k] || 0) + 1;   // hneď ukáž
+  saveVote(i, k);
+  paint(i);
+  try {
+    await fetch(FIREBASE_URL + "/votes/" + key + "/" + k + ".json", {
+      method: "PUT",
+      body: JSON.stringify({ ".sv": { "increment": 1 } })
+    });
+    load();
+  } catch (e) {
+    document.getElementById("note").textContent = "Hlas sa nepodarilo uložiť.";
+  }
+}
 
 var list = document.getElementById("list");
-TRACKS.forEach(function (t) {
+TRACKS.forEach(function (t, i) {
   var card = document.createElement("div");
   card.className = "card";
   var h = document.createElement("h2");
   h.textContent = t.title;
   var grid = document.createElement("div");
   grid.className = "slots";
-  [t.v1, t.v2].forEach(function (file, i) {
+  ui[i] = { btns: [], cnt: [], bar: [], slots: [] };
+  [t.v1, t.v2].forEach(function (file, n) {
+    var k = n ? "v2" : "v1";
     var slot = document.createElement("div");
     slot.className = "slot";
     var lab = document.createElement("div");
     lab.className = "lab";
-    lab.textContent = LABELS[i];
+    lab.textContent = LABELS[n];
     var a = document.createElement("audio");
     a.controls = true;
     a.preload = "metadata";
@@ -64,12 +132,31 @@ TRACKS.forEach(function (t) {
       m.textContent = "Súbor „" + file + "“ ešte nie je nahraný.";
       a.replaceWith(m);
     });
-    slot.append(lab, a);
+    var v = document.createElement("div");
+    v.className = "vote";
+    var btn = document.createElement("button");
+    btn.textContent = "Hlasovať";
+    btn.onclick = function () { vote(i, k); };
+    var cnt = document.createElement("span");
+    cnt.className = "count";
+    v.append(btn, cnt);
+    slot.append(lab, a, v);
     grid.append(slot);
+    ui[i].btns.push(btn); ui[i].cnt.push(cnt); ui[i].slots.push(slot);
   });
-  card.append(h, grid);
+  var bar = document.createElement("div");
+  bar.className = "bar";
+  var b1 = document.createElement("i"), b2 = document.createElement("i");
+  b2.style.opacity = ".45";
+  bar.append(b1, b2);
+  ui[i].bar = [b1, b2];
+  card.append(h, grid, bar);
   list.append(card);
+  paint(i);
 });
+
+if (!VOTING) document.getElementById("note").textContent = "Hlasovanie ešte nie je pripojené (chýba FIREBASE_URL v index.html).";
+else { load(); setInterval(load, 30000); }
 
 // keď spustíš jednu skladbu, ostatné sa zastavia
 document.addEventListener("play", function (e) {
