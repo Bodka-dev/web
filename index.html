@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moje MP3</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1d1d1f;--mut:#6b6b70;--line:#e3e1da;--acc:#5b4bdb;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#131316;--card:#1c1c21;--ink:#f1f0ec;--mut:#9a9aa3;--line:#2c2c33;--acc:#9a8cff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:28px 16px 48px}
+h1{font-size:28px;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 24px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+h2{font-size:18px;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.slots{grid-template-columns:1fr}}
+.slot{border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.lab{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:8px}
+audio{width:100%;height:40px}
+.miss{color:var(--mut);font-size:14px;margin:0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Moje MP3</h1>
+  <p class="sub">5 skladieb, ku každej 2 verzie. Stačí kliknúť na play.</p>
+  <div id="list"></div>
+</main>
+<script>
+// ===== NASTAVENIA: sem prepíš názvy skladieb a mená súborov =====
+var TRACKS = [
+  { title: "Skladba 1", v1: "1-v1.mp3", v2: "1-v2.mp3" },
+  { title: "Skladba 2", v1: "2-v1.mp3", v2: "2-v2.mp3" },
+  { title: "Skladba 3", v1: "3-v1.mp3", v2: "3-v2.mp3" },
+  { title: "Skladba 4", v1: "4-v1.mp3", v2: "4-v2.mp3" },
+  { title: "Skladba 5", v1: "5-v1.mp3", v2: "5-v2.mp3" }
+];
+var LABELS = ["Verzia 1", "Verzia 2"];
+// ================================================================
+
+var list = document.getElementById("list");
+TRACKS.forEach(function (t) {
+  var card = document.createElement("div");
+  card.className = "card";
+  var h = document.createElement("h2");
+  h.textContent = t.title;
+  var grid = document.createElement("div");
+  grid.className = "slots";
+  [t.v1, t.v2].forEach(function (file, i) {
+    var slot = document.createElement("div");
+    slot.className = "slot";
+    var lab = document.createElement("div");
+    lab.className = "lab";
+    lab.textContent = LABELS[i];
+    var a = document.createElement("audio");
+    a.controls = true;
+    a.preload = "metadata";
+    a.src = encodeURI(file);
+    a.addEventListener("error", function () {
+      var m = document.createElement("p");
+      m.className = "miss";
+      m.textContent = "Súbor „" + file + "“ ešte nie je nahraný.";
+      a.replaceWith(m);
+    });
+    slot.append(lab, a);
+    grid.append(slot);
+  });
+  card.append(h, grid);
+  list.append(card);
+});
+
+// keď spustíš jednu skladbu, ostatné sa zastavia
+document.addEventListener("play", function (e) {
+  document.querySelectorAll("audio").forEach(function (a) {
+    if (a !== e.target) a.pause();
+  });
+}, true);
+</script>
+</body>
+</html>
